@@ -1,9 +1,11 @@
-= Vertx Threads Blocked Reproducer
+= Vertx Unused Waiting Threads Reproducer
 
 image:https://img.shields.io/badge/vert.x-4.4.4-purple.svg[link="https://vertx.io"]
 
 Reproducer for an issue, or at least an unexpected behavior, related to the
-execution of tasks under a shared worker pool.
+execution of tasks under a shared worker pool where a blocked thread seems
+to be halting the execution of tasks on the remaining (waiting) threads of the
+pool.
 
 Note that reproducer is a bit more complex to better represent the use-case
 where I originally noticed the behavior. The reproducer mimics exactly that,

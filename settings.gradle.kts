@@ -1,1 +1,1 @@
-rootProject.name = "vertx-threads-blocked-reproducer"
+rootProject.name = "vertx-unused-waiting-threads-reproducer"
