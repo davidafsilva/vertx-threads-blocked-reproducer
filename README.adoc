@@ -56,37 +56,39 @@ You should see an output similar to the one below
 [source]
 ----
 Supported operations:
- [1] Send quickly processed message to verticle
- [2] Send slowly processed message to verticle
- [3] Short-circuit ongoing 'slow' operation
+ [1] Send a message that does not block the Kafka Consumer handler
+ [2] Send a message that blocks the Kafka Consumer handler
+ [3] Unblocks any ongoing 'blocking' operation, if any
  [0] Exit
 
 Type the numerical value for the desired operation and press <enter>
 ----
 
 Choosing `1` will send a message through the event-bus that shall be "quickly"
-processed, something along the lines of:
+processed by the Kafka consumer handler. You should see omething along the 
+lines of:
 [source]
 ----
 [<thread>][<context>] <timestamp> - EventBus - message received: quick
-[<thread>][<context>] <timestamp> - KafkaConsumer - record received: 1/quick
-[<thread>][<context>] <timestamp> - KafkaConsumer - record processed: 1/quick
+[<thread>][<context>] <timestamp> - KafkaConsumer - record received: <key>/quick
+[<thread>][<context>] <timestamp> - KafkaConsumer - record processed: <key>/quick
 ----
 
 Choosing `2` will send a message through the event-bus as well, however it shall
-block on the kafka consumer handler (through the means of sleep) until you
-choose `3`. If you try to send `1` or `2` prior to that, you'll notice that
-the both consumers (event-bus and Kafka) do not process any message, which
-is the target issue being reproduced here.
+block on the kafka consumer handler (through the means of a sleep) until you
+`3` is entered. If you try to send `1` or `2` prior to sending `3`, you'll notice 
+that both consumers (event-bus and kafka) will not process any message despite
+having more threads (1) available in a wait state, only one them is blocked. 
+This is the target issue being reproduced here.
 
 Full example of a test run can be found below.
 
 [source]
 ----
 Supported operations:
- [1] Send quickly processed message to verticle
- [2] Send slowly processed message to verticle
- [3] Short-circuit ongoing 'slow' operation
+ [1] Send a message that does not block the Kafka Consumer handler
+ [2] Send a message that blocks the Kafka Consumer handler
+ [3] Unblocks any ongoing 'blocking' operation, if any
  [0] Exit
 
 Type the numerical value for the desired operation and press <enter>
