@@ -10,7 +10,7 @@ where I originally noticed the behavior. The reproducer mimics exactly that,
 a worker verticle which spawns two type of consumers: Event-Bus (local) and
 Kafka.
 
-[mermaid]
+[source,mermaid]
 ----
 flowchart TB;
   subgraph User
