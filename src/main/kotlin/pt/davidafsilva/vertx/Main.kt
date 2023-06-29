@@ -16,24 +16,30 @@ import org.apache.kafka.clients.consumer.ConsumerConfig.ENABLE_AUTO_COMMIT_CONFI
 import org.apache.kafka.clients.consumer.ConsumerConfig.GROUP_ID_CONFIG
 import org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG
 import org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG
-import org.apache.kafka.clients.producer.ProducerConfig
+import org.apache.kafka.clients.producer.ProducerConfig.ACKS_CONFIG
+import org.apache.kafka.clients.producer.ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG
+import org.apache.kafka.clients.producer.ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.kafka.common.serialization.StringSerializer
 import java.time.LocalDateTime
 import java.util.Scanner
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 fun main() {
-  val waitFlag = AtomicBoolean(true)
+  val lock = ReentrantLock()
+  val condition = lock.newCondition()
   val vertx = Vertx.vertx()
-  vertx.deployEventBusKafkaPublisherVerticle(waitFlag)
+  vertx.deployEventBusKafkaPublisherVerticle {
+    lock.withLock { condition.await() }
+  }
 
   println("Supported operations:")
-  println(" [1] Send quickly processed message to verticle")
-  println(" [2] Send slowly processed message to verticle")
-  println(" [3] Short-circuit ongoing 'slow' operation")
+  println(" [1] Send a message that does not block the Kafka Consumer handler")
+  println(" [2] Send a message that blocks the Kafka Consumer handler")
+  println(" [3] Unblocks any ongoing 'blocking' operation, if any")
   println(" [0] Exit")
   println("")
   println("Type the numerical value for the desired operation and press <enter>")
@@ -43,7 +49,7 @@ fun main() {
     when (scanner.next()) {
       "1" -> vertx.eventBus().send("publisher", "quick")
       "2" -> vertx.eventBus().send("publisher", "slow")
-      "3" -> waitFlag.set(false)
+      "3" -> lock.withLock { condition.signal() }
       "0" -> break
       else -> println("err: invalid opcode")
     }
@@ -54,7 +60,7 @@ fun main() {
   vertx.close()
 }
 
-private fun Vertx.deployEventBusKafkaPublisherVerticle(waitFlag: AtomicBoolean) {
+private fun Vertx.deployEventBusKafkaPublisherVerticle(waitFn: () -> Unit) {
   val options = DeploymentOptions()
     .setWorker(true)
     .setWorkerPoolName("kafka-verticle-worker-pool")
@@ -62,19 +68,19 @@ private fun Vertx.deployEventBusKafkaPublisherVerticle(waitFlag: AtomicBoolean) 
   val verticle = EventBusKafkaPublisherVerticle(
     ebAddress = "publisher",
     topic = "topic",
-    waitFlag = waitFlag,
+    waitFn = waitFn,
   )
   deployVerticle(verticle, options)
     .onFailure { ex -> log("deployment failed: $ex") }
     .toCompletionStage()
     .toCompletableFuture()
-    .get(10, TimeUnit.SECONDS)
+    .get(10, SECONDS)
 }
 
 class EventBusKafkaPublisherVerticle(
   private val ebAddress: String,
   private val topic: String,
-  private val waitFlag: AtomicBoolean,
+  private val waitFn: () -> Unit,
 ) : AbstractVerticle() {
 
   override fun start(startPromise: Promise<Void>) {
@@ -86,9 +92,9 @@ class EventBusKafkaPublisherVerticle(
     val config = mapOf(
       BOOTSTRAP_SERVERS_CONFIG to "localhost:9092",
       CLIENT_ID_CONFIG to "test",
-      ProducerConfig.ACKS_CONFIG to "all",
-      ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java.canonicalName,
-      ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java.canonicalName,
+      ACKS_CONFIG to "all",
+      KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java.canonicalName,
+      VALUE_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java.canonicalName,
     )
     val producer = KafkaProducer.create<String, String>(vertx, config)
     val keyGen = AtomicInteger()
@@ -112,11 +118,7 @@ class EventBusKafkaPublisherVerticle(
     return KafkaConsumer.create<String, String>(vertx, config)
       .handler { r ->
         log("KafkaConsumer - record received: ${r.key()}/${r.value()}")
-        if (r.value() == "slow") {
-          while (!waitFlag.compareAndSet(false, true)) {
-            Thread.sleep(500)
-          }
-        }
+        if (r.value() == "slow") waitFn()
         log("KafkaConsumer - record processed: ${r.key()}/${r.value()}")
       }
       .subscribe(topic)
