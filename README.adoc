@@ -49,7 +49,7 @@ docker compose up
 Run the application through Gradle:
 [source]
 ----
-./gradlew run
+./gradlew run --console=plain
 ----
 
 You should see an output similar to the one below
